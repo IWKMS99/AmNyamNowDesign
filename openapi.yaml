@@ -1,0 +1,1275 @@
+openapi: 3.0.4
+info:
+  title: "Am Nyam Now API"
+  description: |
+    API для платформы доставки еды. Обслуживает клиентское приложение, веб-панель и логику для Telegram-бота.
+  version: "1.0.0"
+
+servers:
+  - url: "http://localhost:8080/api/v1"
+    description: "Локальный сервер для разработки"
+  - url: "https://api.AmNyamNow.ru/api/v1"
+    description: "Production сервер"
+
+tags:
+  - name: "1. Auth"
+    description: "Аутентификация и управление сессией"
+  - name: "2. User Profile"
+    description: "Управление профилем, адресами и баллами пользователя"
+  - name: "3. Main Screen & Search"
+    description: "Эндпоинты для главного экрана, поиска и просмотра меню"
+  - name: "4. Cart & Orders"
+    description: "Все, что связано с корзиной, оформлением, оплатой и историей заказов"
+  - name: "5. Reviews"
+    description: "Оценка заказов, курьеров и блюд"
+  - name: "6. Admin: Establishments"
+    description: "[ADMIN/MANAGER] Управление заведениями и их меню"
+  - name: "7. Admin: Couriers"
+    description: "[ADMIN] Управление курьерами"
+  - name: "8. Internal (Webhooks)"
+    description: "Внутренние эндпоинты для колбэков от внешних систем (Telegram, Т-Банк)"
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "Access токен для авторизации запросов"
+
+  schemas:
+    PublicOrderId:
+      type: string
+      description: "Публичный идентификатор заказа, видимый пользователю"
+      example: "A-12345"
+    EstablishmentId:
+      type: integer
+      description: "ID заведения"
+      example: 1
+    ItemId:
+      type: integer
+      description: "ID блюда/товара"
+      example: 101
+    
+    AuthTokenResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          description: "Короткоживущий токен доступа"
+        refreshToken:
+          type: string
+          description: "Долгоживущий токен для обновления"
+
+    UserProfileResponse:
+      type: object
+      properties:
+        id: { type: integer, example: 1 }
+        name: { type: string, example: "Александр" }
+        phone: { type: string, example: "+79991234567" }
+        bonusPointsBalance: { type: integer, example: 347 }
+    
+    UserProfileUpdate:
+      type: object
+      properties:
+        name: { type: string, example: "Александр" }
+    
+    AddressResponse:
+      type: object
+      properties:
+        id: { type: integer, example: 42 }
+        addressLine: { type: string, example: "г. Элиста, ул. Ленина, 245" }
+        latitude: { type: number, format: float, example: 46.3083 }
+        longitude: { type: number, format: float, example: 44.2692 }
+
+    AddressCreate:
+      type: object
+      properties:
+        addressLine: { type: string, example: "г. Элиста, 8-й микрорайон, 15" }
+        latitude: { type: number, format: float, example: 46.3150 }
+        longitude: { type: number, format: float, example: 44.2590 }
+    
+    AddressUpdate:
+      allOf:
+        - $ref: '#/components/schemas/AddressCreate'
+
+    Promotion:
+      type: object
+      properties:
+        title: { type: string, example: "Скидки на пиццу!" }
+        imageUrl: { type: string, format: uri, example: "https://cdn.example.com/promo/pizza.jpg" }
+        actionUrl: { type: string, description: "Внутренняя ссылка на заведение или поиск", example: "/establishments/5" }
+
+    EstablishmentSummary:
+      type: object
+      description: "Краткая информация о заведении для списков"
+      properties:
+        id: { $ref: '#/components/schemas/EstablishmentId' }
+        name: { type: string, example: "Ресторан Калмыцкая кухня №1" }
+        logoUrl: { type: string, format: uri }
+        averageRating: { type: number, format: float, example: 4.8 }
+        deliveryFee: { type: integer, description: "Стоимость доставки в копейках", example: 15000 }
+        isAvailable: { type: boolean, description: "Открыто ли заведение сейчас" }
+
+    MainScreenResponse:
+      type: object
+      properties:
+        promotions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Promotion'
+        recentlyOrdered:
+          type: array
+          items:
+            $ref: '#/components/schemas/EstablishmentSummary'
+        establishments:
+          $ref: '#/components/schemas/PagedEstablishmentSummary'
+
+    SearchResponse:
+      type: object
+      properties:
+        establishments:
+          type: array
+          items:
+            $ref: '#/components/schemas/EstablishmentSummary'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemSearchResult'
+    
+    ItemSearchResult:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/ItemId' }
+        name: { type: string, example: "Бёрики с бараниной" }
+        price: { type: integer, example: 35000 }
+        imageUrl: { type: string, format: uri }
+        establishmentInfo:
+          type: object
+          properties:
+            id: { $ref: '#/components/schemas/EstablishmentId' }
+            name: { type: string, example: "Калмыцкая кухня №1" }
+    
+    EstablishmentDetailsResponse:
+      allOf:
+        - $ref: '#/components/schemas/EstablishmentSummary'
+        - type: object
+          properties:
+            description: { type: string }
+            address: { type: string }
+            menu:
+              type: array
+              items:
+                $ref: '#/components/schemas/MenuCategory'
+
+    MenuCategory:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string, example: "Горячие блюда" }
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemDetails'
+            
+    ItemDetails:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/ItemId' }
+        name: { type: string }
+        description: { type: string }
+        price: { type: integer }
+        images:
+          type: array
+          items:
+            type: object
+            properties:
+              imageUrl: { type: string, format: uri }
+              isMain: { type: boolean }
+        modifierGroups:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModifierGroup'
+    
+    ModifierGroup:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string, example: "Выберите добавки" }
+        selectionType: { type: string, enum: [SINGLE, MULTIPLE] }
+        modifiers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Modifier'
+    
+    Modifier:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string, example: "Сырный соус" }
+        priceDelta: { type: integer, description: "Добавочная стоимость в копейках", example: 5000 }
+
+    CartItemModifier:
+      type: object
+      properties:
+        modifierId: { type: integer }
+    
+    CartItem:
+      type: object
+      properties:
+        itemId: { $ref: '#/components/schemas/ItemId' }
+        quantity: { type: integer, minimum: 1 }
+        selectedModifiers:
+          type: array
+          items:
+            $ref: '#/components/schemas/CartItemModifier'
+
+    CartCalculationRequest:
+      type: object
+      properties:
+        address:
+          type: object
+          properties:
+            latitude: { type: number, format: float }
+            longitude: { type: number, format: float }
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CartItem'
+            
+    CartCalculationResponse:
+      type: object
+      properties:
+        itemsPrice: { type: integer }
+        deliveryFee: { type: integer }
+        serviceFee: { type: integer }
+        totalPrice: { type: integer }
+
+    CheckoutRequest:
+      allOf:
+        - $ref: '#/components/schemas/CartCalculationRequest'
+        - type: object
+          properties:
+            comment: { type: string }
+            useBonusPoints: { type: integer, default: 0 }
+
+    CheckoutResponse:
+      type: object
+      properties:
+        paymentUrl: { type: string, format: uri, description: "Ссылка на страницу оплаты" }
+        createdOrders:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderSummary'
+    
+    OrderSummary:
+      type: object
+      properties:
+        publicOrderId: { $ref: '#/components/schemas/PublicOrderId' }
+        establishmentName: { type: string }
+        totalPrice: { type: integer }
+
+    OrderDetailsResponse:
+      allOf:
+        - $ref: '#/components/schemas/OrderSummary'
+        - type: object
+          properties:
+            status: { type: string }
+            deliveryAddress: { type: string }
+            createdAt: { type: string, format: "date-time" }
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/OrderItemDetails'
+    
+    OrderItemDetails:
+      type: object
+      description: "Детальная информация о конкретной позиции в заказе"
+      properties:
+        id:
+          type: integer
+          description: "ID элемента заказа (order_item_id)"
+          example: 501
+        name:
+          type: string
+          description: "Название блюда на момент заказа"
+          example: "Бургер 'Классик'"
+        imageUrl:
+          type: string
+          format: uri
+          description: "Основное изображение блюда"
+          example: "https://cdn.example.com/items/burger.jpg"
+        quantity:
+          type: integer
+          description: "Количество единиц этого блюда в заказе"
+          example: 1
+        priceAtPurchase:
+          type: integer
+          description: "Цена за одну единицу блюда на момент заказа (в копейках)"
+          example: 35000
+        totalPrice:
+          type: integer
+          description: "Общая стоимость этой позиции с учетом опций и количества"
+          example: 42000
+        selectedModifiers:
+          type: array
+          description: "Список выбранных опций (модификаторов) для этого блюда"
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                description: "Название опции"
+                example: "Двойной сыр"
+              priceDelta:
+                type: integer
+                description: "Добавочная стоимость опции в копейках"
+                example: 7000
+
+    ReviewRequest:
+      type: object
+      properties:
+        establishmentRating: { type: integer, minimum: 1, maximum: 5 }
+        courierRating: { type: integer, minimum: 1, maximum: 5 }
+        itemRatings:
+          type: array
+          items:
+            type: object
+            properties:
+              orderItemId: { type: integer }
+              rating: { type: integer, minimum: 1, maximum: 5 }
+
+    EstablishmentCreateRequest:
+      type: object
+      required: [name, type, address]
+      properties:
+        name: { type: string, example: "Новое Кафе" }
+        description: { type: string, example: "Уютное место в центре города" }
+        type: { type: string, enum: [restaurant, cafe, fast_food, pub, deli] }
+        address: { type: string, example: "г. Элиста, ул. Пушкина, 10" }
+        logoUrl: { type: string, format: uri }
+
+    EstablishmentUpdateRequest:
+      type: object
+      properties:
+        name: { type: string, example: "Старое Кафе" }
+        description: { type: string }
+        type: { type: string, enum: [restaurant, cafe, fast_food, pub, deli] }
+        address: { type: string }
+        logoUrl: { type: string, format: uri }
+        status: { type: string, enum: [active, inactive, closed, suspended] }
+
+    CategoryCreateRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, example: "Десерты" }
+        sortOrder: { type: integer, example: 10 }
+
+    CategoryUpdateRequest:
+      allOf:
+       - $ref: '#/components/schemas/CategoryCreateRequest'
+
+    ItemCreateRequest:
+      type: object
+      required: [name, price, categoryId]
+      properties:
+        name: { type: string, example: "Чизкейк Нью-Йорк" }
+        description: { type: string, example: "Классический чизкейк на песочной основе" }
+        price: { type: integer, description: "Цена в копейках", example: 45000 }
+        categoryId: { type: integer }
+        isAvailable: { type: boolean, default: true }
+
+    ItemUpdateRequest:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        price: { type: integer }
+        categoryId: { type: integer }
+        isAvailable: { type: boolean }
+
+    ModifierGroupCreateRequest:
+      type: object
+      required: [name, selectionType]
+      properties:
+        name: { type: string, example: "Выберите сироп" }
+        selectionType: { type: string, enum: [SINGLE, MULTIPLE] }
+
+    ModifierGroupUpdateRequest:
+      allOf:
+        - $ref: '#/components/schemas/ModifierGroupCreateRequest'
+
+    ModifierCreateRequest:
+      type: object
+      required: [name, priceDelta]
+      properties:
+        name: { type: string, example: "Карамельный" }
+        priceDelta: { type: integer, description: "Добавочная стоимость в копейках", example: 5000 }
+
+    ModifierUpdateRequest:
+      allOf:
+        - $ref: '#/components/schemas/ModifierCreateRequest'
+    
+    CourierCreateRequest:
+      type: object
+      required: [name, phone, vehicleType]
+      properties:
+        name: { type: string, example: "Иван Петров" }
+        phone: { type: string, example: "+79270001122" }
+        vehicleType: { type: string, enum: [bicycle, motorcycle, car, on_foot] }
+        hasThermalBag: { type: boolean, default: false }
+
+    CourierUpdateRequest:
+      type: object
+      properties:
+        name: { type: string }
+        phone: { type: string }
+        vehicleType: { type: string, enum: [bicycle, motorcycle, car, on_foot] }
+        hasThermalBag: { type: boolean }
+        status: { type: string, enum: [available, busy, offline] }
+
+    CourierResponse:
+      allOf:
+        - $ref: '#/components/schemas/CourierCreateRequest'
+        - type: object
+          properties:
+            id: { type: integer }
+            status: { type: string, enum: [available, busy, offline] }
+            telegramUserId: { type: integer, nullable: true }
+            averageRating: { type: number, format: float }
+
+    PagedCourierResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/CourierResponse'
+        totalPages: { type: integer }
+        totalElements: { type: integer }
+        number: { type: integer }
+    
+    PagedEstablishmentSummary:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/EstablishmentSummary'
+        totalPages: { type: integer }
+        totalElements: { type: integer }
+        number: { type: integer, description: "Номер текущей страницы (0-based)" }
+    
+    PagedOrderResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderSummary'
+        totalPages: { type: integer }
+        totalElements: { type: integer }
+        number: { type: integer }
+
+paths:
+  /auth/request-code:
+    post:
+      tags: ["1. Auth"]
+      summary: "1. Запросить код подтверждения (звонок/СМС)"
+      description: "Инициирует отправку кода на указанный номер телефона для последующего входа или выполнения защищенных действий."
+      operationId: requestCode
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                phone: { type: string, example: "+79991234567" }
+      responses:
+        '200':
+          description: "Запрос на отправку кода успешно принят."
+
+  /auth/login:
+    post:
+      tags: ["1. Auth"]
+      summary: "2. Войти в систему с кодом"
+      description: "Обменивает номер телефона и проверочный код на пару JWT токенов (access и refresh)."
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                phone: { type: string, example: "+79991234567" }
+                code: { type: string, example: "1234" }
+      responses:
+        '200':
+          description: "Успешный вход."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokenResponse'
+        '400':
+          description: "Неверный код или номер телефона."
+
+  /auth/refresh:
+    post:
+      tags: ["1. Auth"]
+      summary: "3. Обновить access токен"
+      description: "Обменивает истекший или действующий refresh токен на новую пару токенов."
+      operationId: refreshToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200':
+          description: "Токены успешно обновлены."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokenResponse'
+        '401':
+          description: "Refresh токен недействителен или истек."
+
+  /profile:
+    get:
+      tags: ["2. User Profile"]
+      summary: "Получить профиль текущего пользователя"
+      operationId: getMyProfile
+      responses:
+        '200':
+          description: "Данные профиля."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileResponse'
+    put:
+      tags: ["2. User Profile"]
+      summary: "Обновить имя пользователя"
+      operationId: updateMyProfile
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserProfileUpdate'
+      responses:
+        '200':
+          description: "Профиль обновлен."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileResponse'
+
+  /profile/addresses:
+    get:
+      tags: ["2. User Profile"]
+      summary: "Получить список адресов пользователя"
+      operationId: getMyAddresses
+      responses:
+        '200':
+          description: "Список адресов."
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AddressResponse'
+    post:
+      tags: ["2. User Profile"]
+      summary: "Добавить новый адрес"
+      operationId: addMyAddress
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddressCreate'
+      responses:
+        '201':
+          description: "Адрес добавлен."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddressResponse'
+
+  /profile/addresses/{addressId}:
+    put:
+      tags: ["2. User Profile"]
+      summary: "Редактировать адрес"
+      operationId: updateMyAddress
+      parameters:
+        - name: addressId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddressUpdate'
+      responses:
+        '200':
+          description: "Адрес обновлен."
+    delete:
+      tags: ["2. User Profile"]
+      summary: "Удалить адрес"
+      operationId: deleteMyAddress
+      parameters:
+        - name: addressId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204':
+          description: "Адрес удален."
+
+  /screen/main:
+    get:
+      tags: ["3. Main Screen & Search"]
+      summary: "Получить данные для главного экрана"
+      description: "Агрегирующий эндпоинт, который возвращает все необходимые данные для отрисовки главного экрана одним запросом: акции, недавно заказанные, и основной список заведений. Требует координаты для фильтрации по зоне доставки."
+      operationId: getMainScreenData
+      security: []
+      parameters:
+        - name: latitude
+          in: query
+          required: true
+          description: "Широта текущего местоположения или выбранного адреса."
+          schema: { type: number, format: float }
+        - name: longitude
+          in: query
+          required: true
+          description: "Долгота текущего местоположения или выбранного адреса."
+          schema: { type: number, format: float }
+        - name: page
+          in: query
+          description: "Номер страницы для основного списка заведений."
+          schema: { type: integer, default: 0 }
+        - name: size
+          in: query
+          description: "Размер страницы для основного списка заведений."
+          schema: { type: integer, default: 20 }
+      responses:
+        '200':
+          description: "Успешный ответ с данными для главного экрана."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MainScreenResponse'
+
+  /search:
+    get:
+      tags: ["3. Main Screen & Search"]
+      summary: "Универсальный поиск"
+      description: "Выполняет поиск одновременно по заведениям и блюдам. Возвращает отдельные списки для каждого типа сущностей."
+      operationId: search
+      security: []
+      parameters:
+        - name: query
+          in: query
+          required: true
+          description: "Поисковый запрос."
+          schema: { type: string }
+      responses:
+        '200':
+          description: "Результаты поиска."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+
+  /establishments/{establishmentId}:
+    get:
+      tags: ["3. Main Screen & Search"]
+      summary: "Получить детальную информацию о заведении"
+      description: "Возвращает полную информацию о заведении, включая его меню, сгруппированное по категориям и с учетом всех модификаторов для блюд."
+      operationId: getEstablishmentById
+      security: []
+      parameters:
+        - name: establishmentId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/EstablishmentId'
+      responses:
+        '200':
+          description: "Детальная информация о заведении."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstablishmentDetailsResponse'
+        '404':
+          description: "Заведение не найдено."
+
+  /cart/calculate:
+    post:
+      tags: ["4. Cart & Orders"]
+      summary: "Рассчитать стоимость корзины"
+      description: "Принимает состав корзины и адрес, возвращает предварительный расчет: подытог, стоимость доставки, сервисный сбор и итоговую сумму. Не создает заказ, используется для обновления UI корзины."
+      operationId: calculateCart
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CartCalculationRequest'
+      responses:
+        '200':
+          description: "Расчет стоимости."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CartCalculationResponse'
+        '400':
+          description: "Ошибка в составе корзины (например, товар недоступен)."
+
+  /orders/checkout:
+    post:
+      tags: ["4. Cart & Orders"]
+      summary: "Оформить заказ (создать и получить ссылку на оплату)"
+      description: |
+        Ключевой эндпоинт. Принимает состав корзины, адрес доставки и количество списываемых баллов.
+        - Создает заказ (или несколько заказов, если товары из разных заведений).
+        - Создает связанный платеж.
+        - Возвращает ссылку на оплату от Т-Банка.
+      operationId: checkout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckoutRequest'
+      responses:
+        '200':
+          description: "Заказ успешно создан, ссылка на оплату готова."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckoutResponse'
+        '400':
+          description: "Ошибка при оформлении (не хватает баллов, товар закончился, заведение закрылось)."
+
+  /orders:
+    get:
+      tags: ["4. Cart & Orders"]
+      summary: "Получить историю заказов пользователя"
+      operationId: getMyOrders
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: size
+          in: query
+          schema: { type: integer, default: 10 }
+      responses:
+        '200':
+          description: "Пагинированный список заказов."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedOrderResponse'
+  
+  /orders/{publicOrderId}:
+    get:
+      tags: ["4. Cart & Orders"]
+      summary: "Получить детали конкретного заказа"
+      operationId: getOrderById
+      parameters:
+        - name: publicOrderId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/PublicOrderId'
+      responses:
+        '200':
+          description: "Детали заказа."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDetailsResponse'
+        '404':
+          description: "Заказ не найден."
+
+  /orders/{publicOrderId}/review:
+    post:
+      tags: ["5. Reviews"]
+      summary: "Оставить отзыв на заказ"
+      description: "Позволяет пользователю оценить заведение, курьера и каждое блюдо в завершенном заказе. Можно вызвать только один раз для одного заказа."
+      operationId: reviewOrder
+      parameters:
+        - name: publicOrderId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/PublicOrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+      responses:
+        '201':
+          description: "Отзыв успешно создан."
+        '400':
+          description: "Некорректные данные или заказ уже был оценен."
+        '404':
+          description: "Заказ не найден."
+        '409':
+          description: "Отзыв на этот заказ уже существует."
+
+  /admin/establishments:
+    get:
+      tags: ["6. Admin: Establishments"]
+      summary: "[ADMIN] Получить список всех заведений"
+      operationId: adminGetAllEstablishments
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: size
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        '200':
+          description: "Список заведений."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedEstablishmentSummary'
+    post:
+      tags: ["6. Admin: Establishments"]
+      summary: "[ADMIN] Создать новое заведение"
+      operationId: adminCreateEstablishment
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstablishmentCreateRequest'
+      responses:
+        '201':
+          description: "Заведение создано."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstablishmentDetailsResponse'
+
+  /admin/establishments/{establishmentId}:
+    get:
+      tags: ["6. Admin: Establishments"]
+      summary: "[ADMIN] Получить заведение по ID для админки"
+      operationId: adminGetEstablishmentById
+      parameters:
+        - name: establishmentId
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/EstablishmentId' }
+      responses:
+        '200':
+          description: "Детальная информация о заведении для администрирования."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstablishmentDetailsResponse'
+    put:
+      tags: ["6. Admin: Establishments"]
+      summary: "[ADMIN/MANAGER] Обновить данные заведения"
+      description: "Доступно Администратору для любого заведения и Менеджеру только для своего."
+      operationId: adminUpdateEstablishment
+      parameters:
+        - name: establishmentId
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/EstablishmentId' }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstablishmentUpdateRequest'
+      responses:
+        '200':
+          description: "Заведение обновлено."
+    delete:
+      tags: ["6. Admin: Establishments"]
+      summary: "[ADMIN] Удалить заведение"
+      operationId: adminDeleteEstablishment
+      parameters:
+        - name: establishmentId
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/EstablishmentId' }
+      responses:
+        '204':
+          description: "Заведение удалено."
+
+  /admin/establishments/{establishmentId}/categories:
+    post:
+      tags: ["6. Admin: Establishments"]
+      summary: "[ADMIN/MANAGER] Создать категорию меню"
+      operationId: adminCreateMenuCategory
+      parameters:
+        - name: establishmentId
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/EstablishmentId' }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryCreateRequest'
+      responses:
+        '201':
+          description: "Категория создана."
+
+  /admin/categories/{categoryId}:
+    put:
+      tags: ["6. Admin: Establishments"]
+      summary: "[ADMIN/MANAGER] Обновить категорию меню"
+      operationId: adminUpdateMenuCategory
+      parameters:
+        - name: categoryId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryUpdateRequest'
+      responses:
+        '200':
+          description: "Категория обновлена."
+    delete:
+      tags: ["6. Admin: Establishments"]
+      summary: "[ADMIN/MANAGER] Удалить категорию меню"
+      operationId: adminDeleteMenuCategory
+      parameters:
+        - name: categoryId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204':
+          description: "Категория удалена."
+
+  /admin/establishments/{establishmentId}/items:
+    post:
+      tags: ["6. Admin: Establishments"]
+      summary: "[ADMIN/MANAGER] Создать новое блюдо"
+      operationId: adminCreateItem
+      parameters:
+        - name: establishmentId
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/EstablishmentId' }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ItemCreateRequest'
+      responses:
+        '201':
+          description: "Блюдо создано."
+
+  /admin/items/{itemId}:
+    put:
+      tags: ["6. Admin: Establishments"]
+      summary: "[ADMIN/MANAGER] Обновить блюдо"
+      operationId: adminUpdateItem
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/ItemId' }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ItemUpdateRequest'
+      responses:
+        '200':
+          description: "Блюдо обновлено."
+    delete:
+      tags: ["6. Admin: Establishments"]
+      summary: "[ADMIN/MANAGER] Удалить блюдо"
+      operationId: adminDeleteItem
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/ItemId' }
+      responses:
+        '204':
+          description: "Блюдо удалено."
+
+  /admin/items/{itemId}/modifier-groups:
+    post:
+      tags: ["6. Admin: Establishments"]
+      summary: "[ADMIN/MANAGER] Создать группу опций для блюда"
+      operationId: adminCreateModifierGroup
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/ItemId' }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModifierGroupCreateRequest'
+      responses:
+        '201':
+          description: "Группа опций создана."
+
+  /admin/modifier-groups/{groupId}:
+    put:
+      tags: ["6. Admin: Establishments"]
+      summary: "[ADMIN/MANAGER] Обновить группу опций"
+      operationId: adminUpdateModifierGroup
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModifierGroupUpdateRequest'
+      responses:
+        '200':
+          description: "Группа опций обновлена."
+    delete:
+      tags: ["6. Admin: Establishments"]
+      summary: "[ADMIN/MANAGER] Удалить группу опций"
+      operationId: adminDeleteModifierGroup
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204':
+          description: "Группа опций удалена."
+
+  /admin/modifier-groups/{groupId}/modifiers:
+    post:
+      tags: ["6. Admin: Establishments"]
+      summary: "[ADMIN/MANAGER] Добавить опцию в группу"
+      operationId: adminCreateModifier
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModifierCreateRequest'
+      responses:
+        '201':
+          description: "Опция добавлена."
+
+  /admin/modifiers/{modifierId}:
+    put:
+      tags: ["6. Admin: Establishments"]
+      summary: "[ADMIN/MANAGER] Обновить опцию"
+      operationId: adminUpdateModifier
+      parameters:
+        - name: modifierId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModifierUpdateRequest'
+      responses:
+        '200':
+          description: "Опция обновлена."
+    delete:
+      tags: ["6. Admin: Establishments"]
+      summary: "[ADMIN/MANAGER] Удалить опцию"
+      operationId: adminDeleteModifier
+      parameters:
+        - name: modifierId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204':
+          description: "Опция удалена."
+
+  /admin/couriers:
+    post:
+      tags: ["7. Admin: Couriers"]
+      summary: "[ADMIN] Создать нового курьера"
+      operationId: adminCreateCourier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CourierCreateRequest'
+      responses:
+        '201':
+          description: "Курьер успешно создан."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourierResponse'
+    get:
+      tags: ["7. Admin: Couriers"]
+      summary: "[ADMIN] Получить список всех курьеров"
+      operationId: adminGetAllCouriers
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: size
+          in: query
+          schema: { type: integer, default: 20 }
+        - name: status
+          in: query
+          description: "Фильтр по статусу курьера"
+          schema:
+            type: string
+      responses:
+        '200':
+          description: "Пагинированный список курьеров."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedCourierResponse'
+
+  /admin/couriers/{courierId}:
+    get:
+      tags: ["7. Admin: Couriers"]
+      summary: "[ADMIN] Получить курьера по ID"
+      operationId: adminGetCourierById
+      parameters:
+        - name: courierId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: "Детальная информация о курьере."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourierResponse'
+        '404':
+          description: "Курьер не найден."
+    put:
+      tags: ["7. Admin: Couriers"]
+      summary: "[ADMIN] Обновить данные курьера"
+      operationId: adminUpdateCourier
+      parameters:
+        - name: courierId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CourierUpdateRequest'
+      responses:
+        '200':
+          description: "Данные курьера обновлены."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourierResponse'
+    delete:
+      tags: ["7. Admin: Couriers"]
+      summary: "[ADMIN] Удалить курьера"
+      operationId: adminDeleteCourier
+      parameters:
+        - name: courierId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204':
+          description: "Курьер удален."
+
+  /internal/webhooks/tbank:
+    post:
+      tags: ["8. Internal (Webhooks)"]
+      summary: "Webhook от Т-Банк для уведомлений о статусе платежа"
+      description: "НЕ ДЛЯ ПУБЛИЧНОГО ИСПОЛЬЗОВАНИЯ. Принимает колбэки от платежной системы. Безопасность обеспечивается проверкой подписи запроса, которую должен выполнять бэкенд."
+      operationId: handleTbankPaymentCallback
+      security: []
+      requestBody:
+        description: "Тело запроса зависит от спецификации Т-Банк API. Содержит информацию о статусе транзакции."
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                TerminalKey: { type: string }
+                OrderId: { type: string }
+                Success: { type: boolean }
+                Status: { type: string }
+                Amount: { type: integer }
+                Token: { type: string }
+      responses:
+        '200':
+          description: "Колбэк успешно обработан. Ответ должен быть 'OK' в теле, как требует Т-Банк."
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "OK"
+        '400':
+          description: "Невалидный запрос (например, неверная подпись)."
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "ERROR"
+
+  /internal/webhooks/telegram/{secret_token}:
+    post:
+      tags: ["8. Internal (Webhooks)"]
+      summary: "Webhook для получения обновлений от Telegram-бота"
+      description: "НЕ ДЛЯ ПУБЛИЧНОГО ИСПОЛЬЗОВАНИЯ. Единая точка входа для всех сообщений и колбэков от курьерского бота."
+      operationId: handleTelegramUpdate
+      security: []
+      parameters:
+        - name: secret_token
+          in: path
+          required: true
+          description: "Секретный токен для валидации того, что запрос пришел именно от Telegram."
+          schema:
+            type: string
+      requestBody:
+        description: "Тело запроса - стандартный Update-объект от Telegram Bot API."
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: "Обновление принято к обработке. Ответ должен быть пустым и быстрым."
