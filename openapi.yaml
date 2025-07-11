@@ -342,23 +342,25 @@ components:
               orderItemId: { type: integer }
               rating: { type: integer, minimum: 1, maximum: 5 }
 
-    EstablishmentCreateRequest:
+        EstablishmentCreateRequest:
       type: object
-      required: [name, type, address]
+      required: [name, type, address, inn] # Добавили inn в required
       properties:
         name: { type: string, example: "Новое Кафе" }
         description: { type: string, example: "Уютное место в центре города" }
         type: { type: string, enum: [restaurant, cafe, fast_food, pub, deli] }
         address: { type: string, example: "г. Элиста, ул. Пушкина, 10" }
+        inn: { type: string, description: "ИНН заведения для расчетов", example: "7707083893" }
         logoUrl: { type: string, format: uri }
 
-    EstablishmentUpdateRequest:
+        EstablishmentUpdateRequest:
       type: object
       properties:
         name: { type: string, example: "Старое Кафе" }
         description: { type: string }
         type: { type: string, enum: [restaurant, cafe, fast_food, pub, deli] }
         address: { type: string }
+        inn: { type: string, description: "ИНН заведения для расчетов", example: "7707083893" }
         logoUrl: { type: string, format: uri }
         status: { type: string, enum: [active, inactive, closed, suspended] }
 

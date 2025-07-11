@@ -42,6 +42,7 @@ CREATE TABLE establishments (
     address VARCHAR(255) NOT NULL,
     logo_url VARCHAR(255),
     status establishment_status NOT NULL DEFAULT 'inactive',
+    inn VARCHAR(12) NOT NULL,
     average_rating DECIMAL(2, 1) DEFAULT 0.0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
